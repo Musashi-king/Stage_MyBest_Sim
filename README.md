@@ -27,3 +27,10 @@ Pour GitHub Pages, publier `index.html` à la racine d'une branche configurée p
 ## Article SEO
 
 `article-internet-croisiere-esim.md` contient l'article prêt à éditer et publier, avec métadonnées SEO, structure, tableaux, FAQ, idées d'images et sources.
+
+# Regenerer le dashboard pour tester le code
+
+Il faut placer les CSV dans 
+'donnees-test-mybestsim/'
+avant d’exécuter
+'python generate_dashboard.py'
