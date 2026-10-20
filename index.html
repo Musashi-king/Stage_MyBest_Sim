@@ -30,6 +30,19 @@
     .bar-track{height:10px;border-radius:10px;background:#edf3f0;overflow:hidden}
     .bar-fill{height:100%;border-radius:10px;background:var(--green)}
     .bar-count{text-align:right;font-size:12px;font-weight:700}
+    .distribution-layout{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:18px}
+    .distribution-list{display:grid;gap:11px}
+    .distribution-row{display:grid;grid-template-columns:minmax(58px,82px) 1fr 74px;align-items:center;gap:9px}
+    .distribution-name,.distribution-count{font-size:12px}
+    .distribution-count{text-align:right;font-weight:700}
+    .distribution-track{height:9px;border-radius:10px;background:#edf3f0;overflow:hidden}
+    .distribution-fill{height:100%;border-radius:10px;background:var(--green)}
+    .network-fill{background:#49a990}
+    .metric-pair{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+    .metric-tile{padding:13px;border-radius:10px;background:#f2f8f5}
+    .metric-tile strong{display:block;font-size:21px;letter-spacing:-.03em}
+    .metric-tile span{color:var(--muted);font-size:12px}
+    .chart-note{margin:13px 0 0;color:var(--muted);font-size:11px}
     .insights{display:grid;gap:10px}
     .insight{padding:12px 13px;border-radius:10px;background:#f2f8f5}
     .insight strong{display:block;margin-bottom:2px}
@@ -50,8 +63,8 @@
     button{padding:7px 12px;border:1px solid #d5e0dc;border-radius:7px;background:white;color:var(--ink);font:inherit;cursor:pointer}
     button:disabled{opacity:.4;cursor:default}
     footer{margin-top:16px;color:var(--muted);font-size:11px;text-align:right}
-    @media(max-width:900px){.cards{grid-template-columns:repeat(3,minmax(0,1fr))}.layout{grid-template-columns:1fr}}
-    @media(max-width:560px){header{padding:23px 20px}.cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}main{padding:0 12px 32px;margin-top:16px}.card{min-height:110px;padding:14px}.panel{padding:16px}.table-head{align-items:flex-start;flex-direction:column}.controls{width:100%}input{width:100%;flex:1}}
+    @media(max-width:900px){.cards{grid-template-columns:repeat(3,minmax(0,1fr))}.layout{grid-template-columns:1fr}.distribution-layout{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media(max-width:560px){header{padding:23px 20px}.cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}main{padding:0 12px 32px;margin-top:16px}.card{min-height:110px;padding:14px}.panel{padding:16px}.table-head{align-items:flex-start;flex-direction:column}.controls{width:100%}input{width:100%;flex:1}.distribution-layout{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
@@ -79,6 +92,25 @@
         <p class="panel-note">Quelques repères complémentaires sur le catalogue</p>
         <div class="insights" id="insights"></div>
         <div class="method"><strong>Note de calcul.</strong> Les offres « illimitées » ne donnent pas de volume numérique : elles sont exclues de la moyenne de data, mais incluses dans les autres indicateurs. Les montants sont en euros, tels que fournis par les CSV.</div>
+      </article>
+    </section>
+    <section class="distribution-layout" aria-label="Répartition des offres">
+      <article class="panel">
+        <h2>Volumes de data</h2>
+        <p class="panel-note">Répartition des forfaits avec volume chiffré</p>
+        <div class="distribution-list" id="dataDistribution"></div>
+      </article>
+      <article class="panel">
+        <h2>Durée de validité</h2>
+        <p class="panel-note">Nombre de jours inclus dans les offres</p>
+        <div class="distribution-list" id="validityDistribution"></div>
+      </article>
+      <article class="panel">
+        <h2>Réseau &amp; prix par Go</h2>
+        <p class="panel-note">Réseaux annoncés dans les fichiers fournisseurs</p>
+        <div class="distribution-list" id="networkDistribution"></div>
+        <div class="metric-pair" id="valueMetrics" style="margin-top:18px"></div>
+        <p class="chart-note">Prix par Go calculé uniquement pour les offres à volume chiffré. Les destinations et durées variant, cet indicateur est un repère global, pas une comparaison à caractéristiques égales.</p>
       </article>
     </section>
     <section class="panel table-panel">
@@ -113,6 +145,32 @@
     document.getElementById("avgprice").textContent = money(prices.reduce((sum,value)=>sum+value,0)/prices.length);
     document.getElementById("avgdata").textContent = `${number(numericData.reduce((sum,row)=>sum+row.data,0)/numericData.length)} Go`;
     document.getElementById("dataCoverage").textContent = `sur ${number(numericData.length)} offres avec volume chiffré`;
+    const median = values => {
+      const sorted = [...values].sort((a,b)=>a-b);
+      const middle = Math.floor(sorted.length/2);
+      return sorted.length % 2 ? sorted[middle] : (sorted[middle-1]+sorted[middle])/2;
+    };
+    const distributionMarkup = (items, totalCount, formatter, fillClass="") => {
+      const maxCount = Math.max(...items.map(item=>item.count));
+      return items.map(item=>`<div class="distribution-row"><span class="distribution-name">${escapeHtml(formatter(item.value))}</span><div class="distribution-track"><div class="distribution-fill ${fillClass}" style="width:${item.count/maxCount*100}%" title="${number(item.count)} offres"></div></div><span class="distribution-count">${number(item.count)} · ${number(item.count/totalCount*100)} %</span></div>`).join("");
+    };
+    const countValues = values => {
+      const counts = new Map();
+      values.forEach(value=>counts.set(value,(counts.get(value)||0)+1));
+      return [...counts.entries()].map(([value,count])=>({value,count})).sort((a,b)=>Number(a.value)-Number(b.value));
+    };
+    const dataDistribution = countValues(numericData.map(row=>row.data));
+    const validityDistribution = countValues(rows.filter(row=>row.validity!==null).map(row=>row.validity));
+    const networkDistribution = countValues(rows.map(row=>row.network).filter(Boolean));
+    document.getElementById("dataDistribution").innerHTML = distributionMarkup(dataDistribution,numericData.length,value=>`${number(value)} Go`);
+    document.getElementById("validityDistribution").innerHTML = distributionMarkup(validityDistribution,rows.length,value=>`${number(value)} jours`);
+    document.getElementById("networkDistribution").innerHTML = distributionMarkup(networkDistribution,rows.length,value=>value,"network-fill");
+    const pricePerGb = numericData.filter(row=>row.data>0).map(row=>row.price/row.data);
+    const medianData = median(numericData.map(row=>row.data));
+    document.getElementById("valueMetrics").innerHTML = [
+      `<div class="metric-tile"><strong>${money(median(pricePerGb))}</strong><span>prix médian par Go</span></div>`,
+      `<div class="metric-tile"><strong>${number(medianData)} Go</strong><span>volume médian</span></div>`
+    ].join("");
     const counts = providers.map(provider=>({provider,count:rows.filter(row=>row.provider===provider).length})).sort((a,b)=>b.count-a.count||a.provider.localeCompare(b.provider,"fr"));
     const maxCount = Math.max(...counts.map(item=>item.count));
     document.getElementById("providers").innerHTML = counts.map(item=>`<div class="bar-row"><span class="bar-name" title="${escapeHtml(item.provider)}">${escapeHtml(item.provider)}</span><div class="bar-track"><div class="bar-fill" style="width:${item.count/maxCount*100}%"></div></div><span class="bar-count">${number(item.count)}</span></div>`).join("");
